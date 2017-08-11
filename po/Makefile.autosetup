@@ -1,0 +1,78 @@
+@if ENABLE_NLS
+
+MSGID_BUGS_ADDRESS = @BUGS_ADDRESS@
+GMSGFMT		= @MSGFMT@
+localedir 	= @MUTTLOCALEDIR@
+XGETTEXT 	= @XGETTEXT@
+XGETTEXT_OPTIONS= --keyword=_ --keyword=N_ --no-wrap --add-comments=L10N
+MSGMERGE 	= @MSGMERGE@
+MSGMERGE_UPDATE = @MSGMERGE@ --update
+
+POFILES		=  po/bg.po po/ca.po po/cs.po po/da.po po/de.po po/el.po \
+		   po/en_GB.po po/eo.po po/es.po po/et.po po/eu.po po/fr.po \
+		   po/ga.po po/gl.po po/hu.po po/id.po po/it.po po/ja.po \
+		   po/ko.po po/lt.po po/nl.po po/pl.po po/pt_BR.po po/ru.po \
+		   po/sk.po po/sv.po po/tr.po po/uk.po po/zh_CN.po po/zh_TW.po
+MOFILES		= $(POFILES:%.po=%.mo)
+POTFILES	!= find $(SRCDIR) -name "*.[ch]" | sort
+
+all-po:	$(MOFILES)
+
+$(MOFILES):	$(POFILES)
+	@lang=`echo $@ | sed -e 's/\..*//'` && \
+	rm -f $${lang}.mo && \
+	echo "Compiling $@" && \
+	$(GMSGFMT) -c -o $${lang}.mo $${lang}.po
+
+clean-po:
+	$(RM) $(MOFILES)
+	$(RM) $(PACKAGE).pot
+	$(RM) po/*~
+
+install-po: all-po
+	@catalogs='$(MOFILES)'; \
+	for cat in $$catalogs; do \
+	  lang=`echo $$cat | sed -e 's/\.mo$$//' -e 's|^po/||'`; \
+	  dir=$(DESTDIR)$(localedir)/$$lang/LC_MESSAGES; \
+	  $(MKDIR_P) $$dir; \
+	  $(INSTALL_DATA) $$cat $$dir/$(PACKAGE).mo; \
+	  echo "installing $$dir/$(PACKAGE).mo"; \
+	done
+
+uninstall-po:
+	@catalogs='$(MOFILES)'; \
+	for cat in $$catalogs; do \
+	  lang=`echo $$cat | sed -e 's/\.mo$$//'`; \
+	  dir=$(DESTDIR)$(localedir)/$$lang/LC_MESSAGES; \
+	  $(RM) $$dir/$(PACKAGE).mo; \
+	  echo "removing $$dir/$(PACKAGE).mo"; \
+	done
+
+update-po: clean-po
+	$(MAKE) $(PACKAGE).pot-update
+	$(MAKE) all-po
+
+$(PACKAGE).pot-update:
+	$(XGETTEXT) --default-domain=$(PACKAGE) --directory=$(SRCDIR) \
+	    $(XGETTEXT_OPTIONS)  \
+	    --files-from=po/POTFILES.in \
+	    --copyright-holder='$(COPYRIGHT_HOLDER)' \
+	    --package-name="$(PACKAGE)" \
+	    --package-version="$(PACKAGE_VERSION)" \
+	    --msgid-bugs-address="$(MSGID_BUGS_ADDRESS)" \
+	    --output=$(PACKAGE).pot
+	@catalogs='$(POFILES)'; \
+	for cat in $$catalogs; do \
+	  lang=`echo $$cat | sed -e 's/\.po$$//'`; \
+	  echo "$(MSGMERGE_UPDATE) $${lang}.po $(PACKAGE).pot"; \
+	  $(MSGMERGE_UPDATE) $${lang}.po $(PACKAGE).pot; \
+	done
+
+@else
+all-po:
+clean-po:
+install-po:
+uninstall-po:
+@endif
+
+# vim: set ts=8 noexpandtab:
