@@ -112,7 +112,7 @@ define SYSCONFDIR       [get-define sysconfdir]
 if {1} {
 
   # First off, require c99
-  #define-append CFLAGS -std=c99
+  define-append CFLAGS -std=c99
   if {![cctest]} {
     user-error "C99 is required"
   }
@@ -144,16 +144,17 @@ if {1} {
   # Enable extensions (reverse-engineered from AC_SYSTEM_EXTENSIONS)
   if {1} {
     if {[cc-check-includes minix/config.h]} {
-      define _POSIX_SOURCE 1
-      define _POSIX_1_SOURCE 2
-      define _MINIX 1
+      define-append CFLAGS -D_POSIX_SOURCE=1
+      define-append CFLAGS -D_POSIX_1_SOURCE=2
+      define-append CFLAGS -D_MINIX=1
     }
-    define _ALL_SOURCE 1
-    define _GNU_SOURCE 1
-    define _POSIX_PTHREAD_SEMANTICS 1
-    define _TANDEM_SOURCE 1
-    define __EXTENSIONS__
+    define-append CFLAGS -D_ALL_SOURCE=1
+    define-append CFLAGS -D_GNU_SOURCE=1
+    define-append CFLAGS -D_POSIX_PTHREAD_SEMANTICS=1
+    define-append CFLAGS -D_TANDEM_SOURCE=1
+    define-append CFLAGS -D__EXTENSIONS__
   }
+  cc-with [list -cflags [get-define CFLAGS]]
 
   # Large file support
   if {[cc-check-lfs]} {
@@ -634,7 +635,7 @@ if {[get-define want-qdbm]} {
   if {![check-inc-and-lib qdbm [opt-val with-qdbm $prefix] \
                           villa.h vlopen qdbm]} {
     # On Linux, headers are in a dedicated subdirectory
-    # TODO - this will leave -I$prefix/qdbm in CFLAGS, if found
+    # TODO - this will leave -I$prefix/qdbm in CFLAGS, if found
     if {[check-inc-and-lib qdbm [opt-val with-qdbm $prefix] \
                             qdbm/villa.h vlopen qdbm]} {
       define-append CFLAGS -I$prefix/include/qdbm
