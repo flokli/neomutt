@@ -159,15 +159,14 @@ define USE_SOCKET
 
 # Helper function to check for a header file and a function in a library
 proc check-inc-and-lib {name prefix header fun lib} {
-  cc-with [list -cflags -I$prefix/include] {
-    if {[cc-check-includes $header] &&
-        [cc-check-function-in-lib $fun $lib -L$prefix/lib]} {
-      define-append CFLAGS -I$prefix/include
+  cc-with [list -cflags -I$prefix/include -libs -L$prefix/lib] {
+    if {[cc-check-includes $header] && [cc-check-function-in-lib $fun $lib]} {
+      define-append CFLAGS  -I$prefix/include
       define-append LDFLAGS -L$prefix/lib
       define-feature $name
     }
   }
-  return [have-feature $name]
+  have-feature $name
 }
 
 # Helper function to get the value of a macro
@@ -192,9 +191,7 @@ if {[opt-bool everything]} {
 }
 
 # Debug
-if {[opt-bool logging]} {
-  define DEBUG
-}
+expr {[opt-bool logging] && [define DEBUG]}
 
 # Documentation
 if {[opt-bool doc]} {
@@ -203,7 +200,7 @@ if {[opt-bool doc]} {
   }
   define BUILD_DOC
 }
-define MAKEDOC_FULL [opt-bool full-doc]
+expr {[opt-bool full-doc] && [define MAKEDOC_FULL]}
 
 # GPGME
 if {[opt-bool gpgme]} {
@@ -309,9 +306,11 @@ if {1} {
 
   # Locate the library defining waddnwstr()
   set ncurses_prefix [opt-val with-ncurses $prefix]
-  foreach ncurses_lib {ncursesw ncurses curses} {
-    if {[cc-check-function-in-lib waddnwstr $ncurses_lib -L$ncurses_prefix/lib]} {
-      break
+  cc-with [list -libs -L$ncurses_prefix/lib] {
+    foreach ncurses_lib {ncursesw ncurses curses} {
+      if {[cc-check-function-in-lib waddnwstr $ncurses_lib]} {
+        break
+      }
     }
   }
   if {![have-feature waddnwstr]} {
@@ -320,22 +319,30 @@ if {1} {
 
   # Locate the directory containing ncurses.h
   # See https://github.com/neomutt/neomutt/pull/679
-  cc-with [list -cflags -I$ncurses_prefix] {
+  set found 0
+  cc-with [list -cflags -I$ncurses_prefix/include] {
     foreach ncurses_inc {ncursesw/ ncurses/ curses/ {}} {
       if {[cc-check-includes ${ncurses_inc}ncurses.h] ||
           [cc-check-includes ${ncurses_inc}curses.h]} {
+        set found 1
         break
       }
     }
   }
+  if {!$found} {
+    user-error "Unable to find ncurses headers"
+  }
 
-  if {![cc-check-function-in-lib tgetent $ncurses_lib -L$ncurses_prefix/lib]} {
-    cc-check-function-in-lib tgetent tinfo -L$ncurses_prefix/lib
+  cc-with [list -libs -L$ncurses_prefix/lib] {
+    if {![cc-check-function-in-lib tgetent $ncurses_lib]} {
+      cc-check-function-in-lib tgetent tinfo
+    }
+    foreach f {start_color typeahead bkgdset curs_set meta use_default_colors resizeterm} {
+      cc-check-function-in-lib $f $ncurses_lib
+    }
+    cc-check-functions use_extended_names
   }
-  foreach f {start_color typeahead bkgdset curs_set meta use_default_colors resizeterm} {
-    cc-check-function-in-lib $f $ncurses_lib -L$ncurses_prefix/lib
-  }
-  cc-check-functions use_extended_names
+
   if {[have-feature start_color]} {
     define-feature COLOR
   }
@@ -348,8 +355,7 @@ if {![check-iconv $prefix]} {
 
 # Mailpath and homespool
 if {[opt-bool homespool]} {
-  set homespool [opt-val with-homespool mailbox]
-  define MAILPATH $homespool
+  define MAILPATH [opt-val with-homespool mailbox]
   define HOMESPOOL 1
 } else {
   define MAILPATH [opt-val with-mailpath /var/mail]
@@ -382,7 +388,6 @@ if {[opt-bool ssl] && ![opt-bool gnutls]} {
   }
   define USE_SSL
   define USE_SSL_OPENSSL
-  define-append LIBS "-lssl -lcrypto"
   if {[cc-with {-includes openssl/ssl.h} {
       cc-check-decls X509_V_FLAG_PARTIAL_CHAIN}]} {
     define-feature SSL_PARTIAL_CHAIN
@@ -465,8 +470,9 @@ if {[opt-bool bdb]} {
 
     # Version is coherent?
     set inc_maj [check-define-value $ver_inc_file DB_VERSION_MAJOR]
-    set inc_min [check-define-value $ver_inc_file DB_VERSION_MAJOR]
-    if {$inc_maj eq {} || $inc_min eq {}} {
+    set inc_min [check-define-value $ver_inc_file DB_VERSION_MINOR]
+    if {$inc_maj eq {}   || $inc_min eq {} ||
+        $inc_maj != $maj || $inc_min != $min} {
       msg-result "no (expecting $maj.$min, got $inc_maj.$inc_min"
       continue
     }
@@ -479,8 +485,11 @@ if {[opt-bool bdb]} {
         continue
       }
     }
+    define-append CFLAGS  -I$ver_inc_dir
+    define-append LDFLAGS -L$ver_lib_dir
+    define-append LIBS    -ldb-$maj.$min
     define-append HCACHE_BACKENDS "bdb"
-    define-append HCACHE_LIBS [get-define lib_db_env_create]
+    define-append HCACHE_LIBS -ldb-$maj.$min
     define USE_HCACHE
     break
   }
@@ -567,21 +576,18 @@ if {[opt-bool gss]} {
   set krb5_config [get-define KRB5-CONFIG]
   if {[catch {exec-with-stderr $krb5_config --cflags gssapi} res err]} {
     user-error "Could not derive --cflags from $krb5_config"
-    return
   }
   define-append CFLAGS $res
 
   # Libs
   if {[catch {exec-with-stderr $krb5_config --libs gssapi} res err]} {
     user-error "Could not derive --libs from $krb5_config"
-    return
   }
   define-append LDFLAGS $res
 
   # Implementation
   if {[catch {exec-with-stderr $krb5_config --version} res err]} {
     user-error "Could not derive --version from $krb5_config"
-    return
   }
   switch -glob $res {
     "Kerberos 5 *" { set GSSAPI_IMPL "MIT" }
