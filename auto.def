@@ -99,8 +99,10 @@ if {![cctest]} {
 }
 
 # GCC-specifc CFLAGS
-if {[string match [get-define CC] gcc*]} {
-  define-append CFLAGS "-fno-delete-null-pointer-checks"
+if {![catch {exec [get-define CC] --version} res]} {
+  if {[string match gcc* $res]} {
+    define-append CFLAGS "-fno-delete-null-pointer-checks"
+  }
 }
 
 # Enable extensions (reverse-engineered from AC_SYSTEM_EXTENSIONS)
