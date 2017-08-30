@@ -112,7 +112,7 @@ define SYSCONFDIR       [get-define sysconfdir]
 if {1} {
 
   # First off, require c99
-  define-append CFLAGS -std=c99
+  #define-append CFLAGS -std=c99
   if {![cctest]} {
     user-error "C99 is required"
   }
@@ -633,7 +633,14 @@ if {[get-define want-kyotocabinet]} {
 if {[get-define want-qdbm]} {
   if {![check-inc-and-lib qdbm [opt-val with-qdbm $prefix] \
                           villa.h vlopen qdbm]} {
-    user-error "Unable to find QDBM"
+    # On Linux, headers are in a dedicated subdirectory
+    # TODO - this will leave -I$prefix/qdbm in CFLAGS, if found
+    if {[check-inc-and-lib qdbm [opt-val with-qdbm $prefix] \
+                            qdbm/villa.h vlopen qdbm]} {
+      define-append CFLAGS -I$prefix/include/qdbm
+    } else {
+      user-error "Unable to find QDBM"
+    }
   }
   define-append HCACHE_BACKENDS "qdbm"
   define-append HCACHE_LIBS [get-define lib_vlopen]
