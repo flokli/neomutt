@@ -111,11 +111,6 @@ define SYSCONFDIR       [get-define sysconfdir]
 # C compiler definitions and related tools
 if {1} {
 
-  # Use ccache?
-  if {[get-define CCACHE] ne {none}} {
-    define CC "[get-define CCACHE] [get-define CC]"
-  }
-
   # First off, require c99
   define-append CFLAGS -std=c99
   if {![cctest]} {
@@ -571,7 +566,7 @@ if {[get-define want-bdb]} {
     set inc_min [check-define-value $ver_inc_file DB_VERSION_MINOR]
     if {$inc_maj eq {}   || $inc_min eq {} ||
         $inc_maj != $maj || $inc_min != $min} {
-      msg-result "no (expecting $maj.$min, got $inc_maj.$inc_min"
+      msg-result "no (expecting $maj.$min, got $inc_maj.$inc_min)"
       continue
     }
     msg-result "yes"
@@ -756,6 +751,12 @@ set bare_rep {
 }
 set str_rep {
   PACKAGE_VERSION
+}
+
+###############################################################################
+# Use ccache - don't do it earlier than here
+if {[get-define CCACHE] ne {none}} {
+  define CC "[get-define CCACHE] [get-define CC]"
 }
 
 ###############################################################################
