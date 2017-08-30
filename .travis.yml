@@ -1,7 +1,7 @@
 notifications:
   email:
     recipients:
-      - rich@flatcap.org
+      - gahr@gahr.ch
     on_success: change
     on_failure: always
 
