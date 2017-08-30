@@ -543,9 +543,9 @@ if {[get-define want-bdb]} {
       user-error "Invalid BerkelyDB version: $ver"
     }
     # This is ugly, but it allows us to not have an inner loop
-    lappend bdb_majors   $maj         $maj           $maj        $maj    $maj
-    lappend bdb_minors   $min         $min           $min        $min    $min
-    lappend bdb_exploded db-$maj-$min db${maj}${min} db$maj.$min db-$maj db$maj
+    lappend bdb_majors   $maj $maj         $maj           $maj        $maj    $maj
+    lappend bdb_minors   $min $min         $min           $min        $min    $min
+    lappend bdb_exploded ""   db-$maj-$min db${maj}${min} db$maj.$min db-$maj db$maj
   }
 
   foreach maj $bdb_majors min $bdb_minors ver $bdb_exploded {
