@@ -45,7 +45,7 @@ before_script:
   - ccache --zero-stats
 
 script:
-  - ./configure.autosetup --everything && make
+  - ./configure.autosetup --prefix=/usr --everything && make
 
 after_script:
   - ccache --show-stats
