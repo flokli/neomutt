@@ -41,14 +41,11 @@ addons:
 git:
   depth: 3
 
-install:
-  - git clone --depth 1 https://github.com/neomutt/travis-build.git ~/config
-
 before_script:
   - ccache --zero-stats
 
 script:
-  - ~/config/build
+  - ./configure.autosetup --everything && make
 
 after_script:
   - ccache --show-stats
