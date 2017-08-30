@@ -1,11 +1,20 @@
 # vim: set ft=tcl syntax=tcl ts=2 sw=2 expandtab:
 
-# Standard autosetup modules
-use system cc cc-lib pkg-config
+# Standard autosetup modules and our own modules
+use system cc cc-lib pkg-config mutt-gettext mutt-iconv
 
-# Out own modules
-use mutt-gettext mutt-iconv
+###############################################################################
+# Names and versions
+define PACKAGE          "neomutt"
+define PACKAGE_VERSION  "20170714"
+define MUTT_VERSION     "1.8.3"
+define BUGS_ADDRESS     "neomutt-devel@neomutt.org"
 
+# Subdirectories that contain additional Makefile.autosetup files
+set subdirs {po doc contrib}
+###############################################################################
+
+###############################################################################
 # Add any user options here
 options {
 # Curses
@@ -20,12 +29,11 @@ options {
   locales-fix=1             => "Disable locales fix"
   pgp=1                     => "Disable PGP support"
   smime=1                   => "Disable SMIME support"
-# Configuration
+  mixmaster=0               => "Enable Mixmaster support"
+  with-mixmaster:=mixmaster => "Location of the mixmaster executable"
   homespool=0               => "Enable new mail spooling in the user's HOME"
   with-homespool:mailbox    => "File in the user's HOME where new mail is spooled"
   with-mailpath:/var/mail   => "Directory where spool mailboxes are located"
-  mixmaster=0               => "Enable Mixmaster support"
-  with-mixmaster:=mixmaster => "Location of the mixmaster executable"
   with-domain:domain        => "Specify your DNS domain name"
 # Crypto
   # OpenSSL or GnuTLS
@@ -70,84 +78,129 @@ options {
 # Enable all options
   everything=0              => "Enable all options"
 }
+###############################################################################
 
-# Names and versions
-define PACKAGE          "neomutt"
-define PACKAGE_VERSION  "20170714"
-define MUTT_VERSION     "1.8.3"
-define BUGS_ADDRESS     "neomutt-devel@neomutt.org"
+###############################################################################
+# All boolean options are converted to want-* definitions here. Further down,
+# their values is checked with [get-define opt].  This facilitates the handling
+# of dependencies among options (see "everything").
+if {1} {
+  foreach opt {logging doc full-doc flock fcntl fmemopen locales-fix pgp smime
+               homespool mixmaster ssl gnutls gpgme gss sasl lua notmuch nls
+               idn bdb gdbm kyotocabinet lmdb qdbm tokyocabinet everything} {
+    define want-$opt [opt-bool $opt]
+  }
 
+  # No more usage of [opt-bool] below this point.
+  proc opt-bool {args} {
+    user-error "opt-bool should not be called here"
+  }
+}
+###############################################################################
+
+###############################################################################
 # Paths
 define BINDIR           [get-define bindir]
 define MUTTLOCALEDIR    [get-define datadir]/locale
 define PKGDATADIR       [get-define datadir]/mutt
 define PKGDOCDIR        [get-define datadir]/doc/mutt
 define SYSCONFDIR       [get-define sysconfdir]
+###############################################################################
 
-# Subdirectories that contain additional Makefile.autosetup files
-set subdirs {po doc contrib}
-
-# C compiler stuff
-cc-check-tools ar ranlib strip
-cc-check-progs install sendmail
-cc-check-endian
-
-# First off, require c99
-define-append CFLAGS -std=c99
-if {![cctest]} {
-  user-error "C99 is required"
-}
-
-# GCC-specifc CFLAGS
-if {![catch {exec [get-define CC] --version} res]} {
-  if {[string match gcc* $res]} {
-    define-append CFLAGS "-fno-delete-null-pointer-checks"
-  }
-}
-
-# Enable extensions (reverse-engineered from AC_SYSTEM_EXTENSIONS)
+###############################################################################
+# C compiler definitions and related tools
 if {1} {
-  if {[cc-check-includes minix/config.h]} {
-    define _POSIX_SOURCE 1
-    define _POSIX_1_SOURCE 2
-    define _MINIX 1
+
+  # Use ccache?
+  if {[get-define CCACHE] ne {none}} {
+    define CC "[get-define CCACHE] [get-define CC]"
   }
-  define _ALL_SOURCE 1
-  define _GNU_SOURCE 1
-  define _POSIX_PTHREAD_SEMANTICS 1
-  define _TANDEM_SOURCE 1
-  define __EXTENSIONS__
+
+  # First off, require c99
+  define-append CFLAGS -std=c99
+  if {![cctest]} {
+    user-error "C99 is required"
+  }
+
+  # Check for tools and programs
+  cc-check-tools ar ranlib strip
+  cc-check-progs install sendmail
+
+  # Version of the C compiler
+  set CC [get-define CC]
+  if {[catch {exec $CC -v} cc_version]} {
+    if {[catch {exec $CC --version} cc_version]} {
+      if {[catch {exec $CC -V} cc_version]} {
+        set cc_version "unknown compiler"
+      }
+    }
+  }
+
+  # Endianess
+  cc-check-endian
+
+  # GCC-specifc CFLAGS
+  if {![catch {exec [get-define CC] --version} res]} {
+    if {[string match gcc* $res]} {
+      define-append CFLAGS "-fno-delete-null-pointer-checks"
+    }
+  }
+
+  # Enable extensions (reverse-engineered from AC_SYSTEM_EXTENSIONS)
+  if {1} {
+    if {[cc-check-includes minix/config.h]} {
+      define _POSIX_SOURCE 1
+      define _POSIX_1_SOURCE 2
+      define _MINIX 1
+    }
+    define _ALL_SOURCE 1
+    define _GNU_SOURCE 1
+    define _POSIX_PTHREAD_SEMANTICS 1
+    define _TANDEM_SOURCE 1
+    define __EXTENSIONS__
+  }
+
+  # Large file support
+  if {[cc-check-lfs]} {
+    define OFF_T_FMT {"%" PRId64}
+  } else {
+    define OFF_T_FMT {"%" PRId32}
+  }
+  define LOFF_T off_t
+
+  # TODO - Is sig_atomic_t volatile?
+  define SIG_ATOMIC_VOLATILE_T sig_atomic_t
 }
+###############################################################################
 
-# Check for includes that are surrounded by '#ifdef HAVE_FOO_H' in the code
-cc-check-includes ioctl.h sys/ioctl.h sys/syscall.h sysexits.h
+###############################################################################
+# Check for includes and functions that in the code are surrounded by
+# '#ifdef HAVE_FOO_H' and '#ifdef HAVE_FUNCTION' and for functions that might
+# be in different libraries
+if {1} {
+  cc-check-includes \
+    ioctl.h \
+    sys/ioctl.h \
+    sys/syscall.h \
+    sysexits.h
 
-# Functions that are checked via '#ifdef HAVE_FUNCTION' in the code
-cc-check-functions \
-  fgetc_unlocked \
-  futimens \
-  getaddrinfo \
-  getsid \
-  iswblank \
-  mkdtemp \
-  strsep \
-  vasprintf
+  cc-check-functions \
+    fgetc_unlocked \
+    futimens \
+    getaddrinfo \
+    getsid \
+    iswblank \
+    mkdtemp \
+    strsep \
+    vasprintf
 
-cc-check-function-in-lib gethostent nsl
-cc-check-function-in-lib setsockopt socket
-cc-check-function-in-lib getaddrinfo_a anl
-
-# Large file support
-if {[cc-check-lfs]} {
-  define OFF_T_FMT {"%" PRId64}
-} else {
-  define OFF_T_FMT {"%" PRId32}
+  cc-check-function-in-lib gethostent nsl
+  cc-check-function-in-lib setsockopt socket
+  cc-check-function-in-lib getaddrinfo_a anl
 }
-define LOFF_T off_t
+###############################################################################
 
-# TODO - Is sig_atomic_t volatile?
-define SIG_ATOMIC_VOLATILE_T sig_atomic_t
-
+###############################################################################
 # Various unconditional defines
 define USE_COMPRESSED
 define USE_IMAP
@@ -156,54 +209,93 @@ define USE_POP
 define USE_SIDEBAR
 define USE_SMTP
 define USE_SOCKET
+###############################################################################
 
-# Helper function to check for a header file and a function in a library
-proc check-inc-and-lib {name prefix header fun lib} {
-  cc-with [list -cflags -I$prefix/include -libs -L$prefix/lib] {
-    if {[cc-check-includes $header] && [cc-check-function-in-lib $fun $lib]} {
-      define-append CFLAGS  -I$prefix/include
-      define-append LDFLAGS -L$prefix/lib
-      define-feature $name
+###############################################################################
+# Helper functions
+if {1} {
+  # Check for a header file and a function in a library
+  proc check-inc-and-lib {name prefix header fun lib} {
+    cc-with [list -cflags -I$prefix/include -libs -L$prefix/lib] {
+      if {[cc-check-includes $header] && [cc-check-function-in-lib $fun $lib]} {
+        define-append CFLAGS  -I$prefix/include
+        define-append LDFLAGS -L$prefix/lib
+        define-feature $name
+      }
     }
+    have-feature $name
   }
-  have-feature $name
-}
 
-# Helper function to get the value of a macro
-proc check-define-value {incfile macro} {
-  set code "#include \"$incfile\"\n$macro"
-  if {[catch {exec [get-define CC] -xc - -E | tail -1 << $code} out]} {
-    set out ""
+  # Get the value of a macro by preprocessing a header file that defines it
+  proc check-define-value {incfile macro} {
+    set code "#include \"$incfile\"\n$macro"
+    if {[catch {exec [get-define CC] -xc - -E | tail -1 << $code} out]} {
+      set out ""
+    }
+    set out
   }
-  set out
+
+  # Convert a string into a representation suitable for a C char[]
+  proc text2c {s} {
+    set result "\n  "
+    set i 0
+    foreach c [split $s {}] {
+      append result "0x[format %02x [scan $c %c]], "
+      if {[expr {[incr i] % 12 == 0}]} {
+        append result "\n  "
+        set i 0
+      }
+    }
+    append result "0x00\n";
+  }
+
+  # Guess what..
+  proc yesno val {
+    expr {$val ? "yes" : "no"}
+  }
 }
+###############################################################################
 
 set prefix [get-define prefix]
 
+###############################################################################
 # Everything
-if {[opt-bool everything]} {
+if {[get-define want-everything]} {
   foreach opt {gpgme pgp smime notmuch lua tokyocabinet kyotocabinet bdb 
                gdbm qdbm lmdb} {
-    # TODO - this is a hack, I'd rather not touch within autosetup's own
-    # structures. See https://github.com/msteveb/autosetup/issues/27.
-    dict set ::autosetup(optset) $opt 1
+    define want-$opt
   }
 }
 
+###############################################################################
 # Debug
-expr {[opt-bool logging] && [define DEBUG]}
+expr {[get-define want-logging] && [define DEBUG]}
 
+###############################################################################
+# flock(1)
+expr {[get-define want-flock] && [define USE_FLOCK]}
+
+###############################################################################
+# fcntl(1)
+expr {[get-define want-fcntl] && [define USE_FCNTL]}
+
+###############################################################################
+# Locales fix
+expr {[get-define want-locales-fix] && [define LOCALES_HACK]}
+
+###############################################################################
 # Documentation
-if {[opt-bool doc]} {
+if {[get-define want-doc]} {
   if {![cc-check-progs xsltproc]} {
     user-error "Unable to find xsltproc"
   }
   define BUILD_DOC
 }
-expr {[opt-bool full-doc] && [define MAKEDOC_FULL]}
+expr {[get-define want-full-doc] && [define MAKEDOC_FULL]}
 
+###############################################################################
 # GPGME
-if {[opt-bool gpgme]} {
+if {[get-define want-gpgme]} {
   if {![check-inc-and-lib gpgme [opt-val with-gpgme $prefix] \
                           gpgme.h gpgme_new gpgme]} {
     user-error "Unable to find GPGME"
@@ -212,20 +304,23 @@ if {[opt-bool gpgme]} {
   define CRYPT_BACKEND_GPGME
 }
 
+###############################################################################
 # PGP
-if {[opt-bool pgp]} {
+if {[get-define want-pgp]} {
   define-feature PGP
   define CRYPT_BACKEND_CLASSIC_PGP
 }
 
+###############################################################################
 # SMIME
-if {[opt-bool smime]} {
+if {[get-define want-smime]} {
   define-feature SMIME
   define CRYPT_BACKEND_CLASSIC_SMIME
 }
 
+###############################################################################
 # SASL
-if {[opt-bool sasl]} {
+if {[get-define want-sasl]} {
   foreach sasl_lib {sasl2 sasl} {
     if {[check-inc-and-lib sasl [opt-val with-sasl $prefix] \
                            sasl/sasl.h sasl_encode64 $sasl_lib]} {
@@ -238,8 +333,9 @@ if {[opt-bool sasl]} {
   }
 }
 
+###############################################################################
 # Lua
-if {[opt-bool lua]} {
+if {[get-define want-lua]} {
   foreach pkg {lua-5.3 lua-5.2} {
     if {[pkg-config $pkg]} {
       define-append CFLAGS [pkg-config-get $pkg CFLAGS]
@@ -253,8 +349,9 @@ if {[opt-bool lua]} {
   }
 }
 
+###############################################################################
 # Notmuch
-if {[opt-bool notmuch]} {
+if {[get-define want-notmuch]} {
   if {![check-inc-and-lib notmuch [opt-val with-notmuch $prefix] \
                           notmuch.h notmuch_database_open notmuch]} {
     user-error "Unable to find Notmuch"
@@ -274,17 +371,9 @@ if {[opt-bool notmuch]} {
   }
 }
 
-# flock(1)
-expr {[opt-bool flock] && [define USE_FLOCK]}
-
-# fcntl(1)
-expr {[opt-bool fcntl] && [define USE_FCNTL]}
-
-# Locales fix
-expr {[opt-bool locales-fix] && [define LOCALES_HACK]}
-
+###############################################################################
 # Native Language Support (NLS)
-if {[opt-bool nls]} {
+if {[get-define want-nls]} {
  if {![check-gettext [opt-val with-nls $prefix]]} {
    user-error "Unable to find gettext"
  }
@@ -293,14 +382,16 @@ if {[opt-bool nls]} {
  }
 }
 
+###############################################################################
 # fmemopen(3)
-if {[opt-bool fmemopen] && [cc-check-functions fmemopen open_memstream]} {
+if {[get-define want-fmemopen] && [cc-check-functions fmemopen open_memstream]} {
   # Temporarily disable fmemopen, due to a bug
   define USE_FMEMOPEN 0
 } else {
   define USE_FMEMOPEN 0
 }
 
+###############################################################################
 # Ncurses
 if {1} {
 
@@ -348,31 +439,36 @@ if {1} {
   }
 }
 
+###############################################################################
 # Iconv - try to mimic AM_ICONV by preferring an installed libiconv
 if {![check-iconv $prefix]} {
   user-error "Unable to find iconv()"
 }
 
+###############################################################################
 # Mailpath and homespool
-if {[opt-bool homespool]} {
+if {[get-define want-homespool]} {
   define MAILPATH [opt-val with-homespool mailbox]
   define HOMESPOOL 1
 } else {
   define MAILPATH [opt-val with-mailpath /var/mail]
 }
 
+###############################################################################
 # Mixmaster
-if {[opt-bool mixmaster]} {
+if {[get-define want-mixmaster]} {
   define MIXMASTER [opt-val with-mixmaster mixmaster]
 }
 
+###############################################################################
 # Domain
 if {[opt-val with-domain] ne {}} {
   define DOMAIN [opt-val with-domain]
 }
 
+###############################################################################
 # TLS support
-if {[opt-bool ssl] && ![opt-bool gnutls]} {
+if {[get-define want-ssl] && ![get-define want-gnutls]} {
   # OpenSSL
   set ssl_prefix [opt-val with-ssl $prefix]
   set ssl_ldflags -L$ssl_prefix/lib
@@ -392,7 +488,7 @@ if {[opt-bool ssl] && ![opt-bool gnutls]} {
       cc-check-decls X509_V_FLAG_PARTIAL_CHAIN}]} {
     define-feature SSL_PARTIAL_CHAIN
   }
-} elseif {[opt-bool gnutls]} {
+} elseif {[get-define want-gnutls]} {
   # GnuTLS
   set gnutls_prefix [opt-val with-gnutls $prefix]
   cc-with [list -cflags -I$gnutls_prefix/include -libs -L$gnutls_prefix/lib] {
@@ -419,8 +515,9 @@ if {[opt-bool ssl] && ![opt-bool gnutls]} {
   define USE_SSL_GNUTLS
 }
 
+###############################################################################
 # GNU libidn
-if {[opt-bool idn]} {
+if {[get-define want-idn]} {
   set idn_prefix [opt-val with-idn $prefix]
   set sprep 0
   set idna 0
@@ -440,8 +537,9 @@ if {[opt-bool idn]} {
   }
 }
 
+###############################################################################
 # Header cache - bdb
-if {[opt-bool bdb]} {
+if {[get-define want-bdb]} {
   set bdb_versions { 5.3 6.2 4.8 } ;# Will be checked in order
   set bdb_prefix [opt-val with-bdb $prefix]
 
@@ -499,8 +597,9 @@ if {[opt-bool bdb]} {
   }
 }
 
+###############################################################################
 # Header Cache - GNU dbm
-if {[opt-bool gdbm]} {
+if {[get-define want-gdbm]} {
   if {![check-inc-and-lib gdbm [opt-val with-gdbm $prefix] \
                           gdbm.h gdbm_open gdbm]} {
     user-error "Unable to find GNU dbm"
@@ -510,8 +609,9 @@ if {[opt-bool gdbm]} {
   define USE_HCACHE
 }
 
+###############################################################################
 # Header cache - LMDB
-if {[opt-bool lmdb]} {
+if {[get-define want-lmdb]} {
   if {![check-inc-and-lib lmdb [opt-val with-lmdb $prefix] \
                           lmdb.h mdb_env_create lmdb]} {
     user-error "Unable to find LMDB"
@@ -521,8 +621,9 @@ if {[opt-bool lmdb]} {
   define USE_HCACHE
 }
 
+###############################################################################
 # Header cache - KyotoCabinet
-if {[opt-bool kyotocabinet]} {
+if {[get-define want-kyotocabinet]} {
   if {![check-inc-and-lib kc [opt-val with-kyotocabinet $prefix] \
                           kclangc.h kcdbopen kyotocabinet]} {
     user-error "Unable to find KyotoCabinet"
@@ -532,8 +633,9 @@ if {[opt-bool kyotocabinet]} {
   define USE_HCACHE
 }
 
+###############################################################################
 # Header cache - QDBM
-if {[opt-bool qdbm]} {
+if {[get-define want-qdbm]} {
   if {![check-inc-and-lib qdbm [opt-val with-qdbm $prefix] \
                           villa.h vlopen qdbm]} {
     user-error "Unable to find QDBM"
@@ -543,8 +645,9 @@ if {[opt-bool qdbm]} {
   define USE_HCACHE
 }
 
+###############################################################################
 # Header Cache - TokyoCabinet
-if {[opt-bool tokyocabinet]} {
+if {[get-define want-tokyocabinet]} {
   if {![check-inc-and-lib tc [opt-val with-tokyocabinet $prefix] \
                           tcbdb.h tcbdbopen tokyocabinet]} {
     user-error "Unable to find TokyoCabinet"
@@ -554,8 +657,9 @@ if {[opt-bool tokyocabinet]} {
   define USE_HCACHE
 }
 
+###############################################################################
 # GSS
-if {[opt-bool gss]} {
+if {[get-define want-gss]} {
 
   # TODO - Use krb5-config only, which should be enough in any moderately
   # modern OS. If people report breakage, I'll implement the manual logic
@@ -603,30 +707,8 @@ if {[opt-bool gss]} {
   define USE_GSS
 }
 
-# text2c
-proc text2c {s} {
-  set result "\n  "
-  set i 0
-  foreach c [split $s {}] {
-    append result "0x[format %02x [scan $c %c]], "
-    if {[expr {[incr i] % 12 == 0}]} {
-      append result "\n  "
-      set i 0
-    }
-  }
-  append result "0x00\n";
-}
-
-# Figure out CC version
-set CC [get-define CC]
-if {[catch {exec $CC -v} cc_version]} {
-  if {[catch {exec $CC --version} cc_version]} {
-    if {[catch {exec $CC -V} cc_version]} {
-      set cc_version "unknown compiler"
-    }
-  }
-}
-
+###############################################################################
+# Generate conststrings.c
 set conststrings "\
   unsigned char cc_version\[\] = {[text2c $cc_version]};\n\
   unsigned char cc_cflags\[\] = {[text2c [get-define CFLAGS]]};\n\
@@ -639,10 +721,7 @@ try {
   user-error "Cannot write conststrings.c: $msg"
 }
 
-if {[get-define CCACHE] ne {none}} {
-  define CC "[get-define CCACHE] [get-define CC]"
-}
-
+###############################################################################
 # Definitions that are going to be substituted in Makefiles and config.h
 set auto_rep {
   _*
@@ -679,6 +758,8 @@ set str_rep {
   PACKAGE_VERSION
 }
 
+###############################################################################
+# Generate targets and Makefiles for subdirectories
 foreach dir $subdirs {
   define-append ALL_TARGETS all-$dir
   define-append CLEAN_TARGETS clean-$dir
@@ -686,18 +767,20 @@ foreach dir $subdirs {
   define-append UNINSTALL_TARGETS uninstall-$dir
   make-template $dir/Makefile.autosetup $dir/Makefile
 }
+
+###############################################################################
+# Generate Makefile and config.h
 make-template Makefile.autosetup Makefile
 make-config-header config.h -auto $auto_rep -bare $bare_rep -str $str_rep
 
-# These two are needed only for mutt.1
+###############################################################################
+# Generate doc/mutt.1
 define bindir [get-define BINDIR]
 define docdir [get-define PKGDOCDIR]
 make-template doc/mutt.man doc/mutt.1
 
-proc yesno val {
-  expr {$val ? "yes" : "no"}
-}
-
+###############################################################################
+# Print a summary
 user-notice "Summary of build options:
 
   Version:           [get-define PACKAGE_VERSION]
