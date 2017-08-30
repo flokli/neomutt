@@ -331,7 +331,7 @@ if {[get-define want-sasl]} {
 ###############################################################################
 # Lua
 if {[get-define want-lua]} {
-  foreach pkg {lua-5.3 lua-5.2} {
+  foreach pkg {lua-5.3 lua5.3 lua-5.2 lua5.2} {
     if {[pkg-config $pkg]} {
       define-append CFLAGS [pkg-config-get $pkg CFLAGS]
       define-append LIBS "[pkg-config-get $pkg LDFLAGS] [pkg-config-get $pkg LIBS]"
