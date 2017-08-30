@@ -632,16 +632,18 @@ if {[get-define want-kyotocabinet]} {
 ###############################################################################
 # Header cache - QDBM
 if {[get-define want-qdbm]} {
-  if {![check-inc-and-lib qdbm [opt-val with-qdbm $prefix] \
-                          villa.h vlopen qdbm]} {
-    # On Linux, headers are in a dedicated subdirectory
-    # TODO - this will leave -I$prefix/qdbm in CFLAGS, if found
-    if {[check-inc-and-lib qdbm [opt-val with-qdbm $prefix] \
-                            qdbm/villa.h vlopen qdbm]} {
-      define-append CFLAGS -I$prefix/include/qdbm
-    } else {
-      user-error "Unable to find QDBM"
-    }
+  # On Linux, headers are in a dedicated subdirectory
+  set qdbm_prefix [opt-val with-qdbm $prefix]
+  if {[file isdirectory $qdbm_prefix/include/qdbm]} {
+    set qdbm_inc_subdir qdbm/
+  } else {
+    set qdbm_inc_subdir ""
+  }
+  if {[check-inc-and-lib qdbm [opt-val with-qdbm $qdbm_prefix] \
+                          ${qdbm_inc_subdir}villa.h vlopen qdbm]} {
+    define-append CFLAGS -I$qdbm_prefix/include/$qdbm_inc_subdir
+  } else {
+    user-error "Unable to find QDBM"
   }
   define-append HCACHE_BACKENDS "qdbm"
   define-append HCACHE_LIBS [get-define lib_vlopen]
