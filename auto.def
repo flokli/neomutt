@@ -646,37 +646,35 @@ if {[get-define CCACHE] ne {none}} {
 # Definitions that are going to be substituted in Makefiles and config.h
 set auto_rep {
   _*
+  *_TARGETS
+  BINDIR
+  BUILD_DOC
   CRYPT_*
   DEBUG
+  DOMAIN
   ENABLE_*
   HAVE_*
   HOMESPOOL
   LOCALES_HACK
-  MUTT_VERSION
-  SENDMAIL
-  USE_*
-  NOTMUCH_API_3
-  BUILD_DOC
+  MAILPATH
   MAKEDOC_FULL
+  MIXMASTER
+  MUTT_VERSION
+  MUTTLOCALEDIR
+  NOTMUCH_API_3
+  PACKAGE
+  PACKAGE_VERSION
+  PKGDATADIR
+  PKGDOCDIR
+  SENDMAIL
+  SYSCONFDIR
+  USE_*
 }
 set bare_rep {
   ICONV_CONST
   LOFF_T
   OFF_T_FMT
   SIG_ATOMIC_VOLATILE_T
-}
-set str_rep {
-  DOMAIN
-  MAILPATH
-  MIXMASTER
-  PACKAGE
-  PACKAGE_VERSION
-  PKGDATADIR
-  PKGDOCDIR
-  SYSCONFDIR
-  MUTTLOCALEDIR
-  BINDIR
-  *_TARGETS
 }
 
 foreach dir $subdirs {
@@ -687,7 +685,7 @@ foreach dir $subdirs {
   make-template $dir/Makefile.autosetup $dir/Makefile
 }
 make-template Makefile.autosetup Makefile
-make-config-header config.h -auto $auto_rep -bare $bare_rep -str $str_rep
+make-config-header config.h -auto $auto_rep -bare $bare_rep
 
 # These two are needed only for mutt.1
 define bindir [get-define BINDIR]
