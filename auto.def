@@ -663,7 +663,6 @@ set auto_rep {
   MUTTLOCALEDIR
   NOTMUCH_API_3
   PACKAGE
-  PACKAGE_VERSION
   PKGDATADIR
   PKGDOCDIR
   SENDMAIL
@@ -676,6 +675,9 @@ set bare_rep {
   OFF_T_FMT
   SIG_ATOMIC_VOLATILE_T
 }
+set str_rep {
+  PACKAGE_VERSION
+}
 
 foreach dir $subdirs {
   define-append ALL_TARGETS all-$dir
@@ -685,7 +687,7 @@ foreach dir $subdirs {
   make-template $dir/Makefile.autosetup $dir/Makefile
 }
 make-template Makefile.autosetup Makefile
-make-config-header config.h -auto $auto_rep -bare $bare_rep
+make-config-header config.h -auto $auto_rep -bare $bare_rep -str $str_rep
 
 # These two are needed only for mutt.1
 define bindir [get-define BINDIR]
